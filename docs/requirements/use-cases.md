@@ -1479,6 +1479,9 @@ Details:
 - **3b. The user is neither an instructor assigned to the student's course section nor the course admin who owns its course** (BR-student-lifecycle, BR-section-scoped-access), which includes the student herself:
   - 3b1. The system refuses the deactivation and informs the user that she does not have permission. The student's account is unchanged.
   - 3b2. Use case ends.
+- **5a. The course admin or instructor changes her mind at the warning in step 4:**
+  - 5a1. The system makes no change to the student's account and returns to the details of this student.
+  - 5a2. Use case ends.
 - **6a. The student was deactivated after her details were viewed in step 2** (e.g., another instructor got there first, or the page is stale):
   - 6a1. The system makes no change and alerts the course admin or instructor that this student is already deactivated.
   - 6a2. Use case ends.
