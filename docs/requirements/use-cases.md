@@ -1476,13 +1476,16 @@ Details:
 - **3a. The student is already deactivated:**
   - 3a1. The system shows that this student is deactivated and does not offer to deactivate her.
   - 3a2. Use case ends.
+- **3b. The user is neither an instructor assigned to the student's course section nor the course admin who owns its course** (BR-student-lifecycle, BR-section-scoped-access), which includes the student herself:
+  - 3b1. The system refuses the deactivation and informs the user that she does not have permission. The student's account is unchanged.
+  - 3b2. Use case ends.
 - **6a. The student was deactivated after her details were viewed in step 2** (e.g., another instructor got there first, or the page is stale):
   - 6a1. The system makes no change and alerts the course admin or instructor that this student is already deactivated.
   - 6a2. Use case ends.
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle
+**Business Rules:** BR-student-lifecycle, BR-section-scoped-access
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
