@@ -30,6 +30,7 @@ These business rules apply across Project Pulse. The course-administration rules
 - **BR-account-self-setup:** A student or instructor sets up her own account by using the unique registration link from her invitation email; the system permits self-setup only against an unconsumed invitation.
 - **BR-team-admin-only:** Only a course admin may create, edit, or delete a team within a course section, and only a course admin may assign students or instructors to a team or remove them from one. The single-instructor cardinality per team is governed by BR-team-single-instructor.
 - **BR-student-lifecycle:** A course admin, or an instructor assigned to the student's course section, may deactivate or reactivate a student — deactivation revokes the student's access while preserving her submitted work. Only a course admin may delete a student; deletion is physical and unrecoverable and also removes the student's weekly activity reports and peer evaluations.
+- **BR-deactivated-student-team:** Deactivating a student does not change her team assignment. She stays a member of her team until a course admin removes her (BR-team-admin-only). What she and her teammates owe is decided by whether her account is active (BR-submission-owed), not by her team membership.
 - **BR-instructor-lifecycle:** Only a course admin may deactivate or reactivate an instructor; deactivation revokes the instructor's access while retaining her record.
 - **BR-rubric-admin-only:** Only a course admin may create, edit, or delete a rubric or its criteria.
 
