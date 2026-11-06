@@ -1488,7 +1488,7 @@ Details:
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle, BR-section-scoped-access, BR-deactivated-student-team
+**Business Rules:** BR-student-lifecycle, BR-section-scoped-access, BR-deactivated-student-team, BR-evaluation-active-evaluatee
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
@@ -1526,10 +1526,11 @@ Details:
 **Extensions:**
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a previously withdrawn student returns to a course section.
-**Business Rules:** BR-student-lifecycle, BR-deactivated-student-team
+**Business Rules:** BR-student-lifecycle, BR-deactivated-student-team, BR-evaluation-active-evaluatee
 
 **Associated Information:**
 - The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Weeks spent deactivated: she owed nothing for them (BR-submission-owed) and teammates could not newly evaluate her (BR-evaluation-active-evaluatee). Reactivation creates no make-up for those weeks (BR-evaluation-submission-window).
 - Her team: deactivation left her on her team (BR-deactivated-student-team), so reactivation returns her to it with no further action, unless a course admin removed her or deleted the team while she was deactivated. In that case she has no team until a course admin assigns one (BR-team-assignment-required).
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
@@ -2216,9 +2217,9 @@ Report generating algorithm: N/A
 
 **Main Success Scenario:**
 1. The student indicates to submit a peer evaluation for the previous week.
-2. The system asks the student to provide peer evaluations for every team member.
+2. The system asks the student to provide peer evaluations for every team member whose account is active (BR-evaluation-active-evaluatee).
 3. See the "Details" defined in the Associated Information of this use case.
-4. The student evaluates each team member (self included) and confirms that she has finished.
+4. The student evaluates each of those team members (self included) and confirms that she has finished.
 5. The system validates the student's inputs according to the "Details" defined in the Associated Information of this use case.
 6. The system displays the details of the peer evaluation and asks the student to confirm the evaluation and submission.
 7. The system notes that a submitted peer evaluation remains editable while its submission window is open; the student may re-submit it to update it until the window closes (BR-evaluation-editable-until-close, BR-evaluation-submission-window).
@@ -2239,15 +2240,19 @@ Report generating algorithm: N/A
 - **4a. Input validation rule violation:**
   - 4a1. The system alerts the student that an input validation rule is violated and displays the nature and location of the error.
   - 4a2. The student corrects the mistake and returns to step 4 of the normal flow.
+- **9a. A team member was deactivated after step 2:**
+  - 9a1. The system saves the evaluations of the other team members, does not save the evaluation of the deactivated team member, and informs the student why (BR-evaluation-active-evaluatee).
+  - 9a2. The system shows the student the peer evaluations it saved, and the student continues from there.
+  - 9a3. Use case ends.
 
 **Priority:** High
 **Frequency of Use:** Approximately 35-40 users, 1 usage per week.
-**Business Rules:** BR-team-scoped-access (the student evaluates the members of a team she belongs to, and no other team), BR-team-assignment-required (only a student assigned to a team submits one), BR-active-weeks, BR-evaluation-editable-until-close, BR-evaluation-submission-window, BR-evaluation-private-comment
+**Business Rules:** BR-team-scoped-access (the student evaluates the members of a team she belongs to, and no other team), BR-team-assignment-required (only a student assigned to a team submits one), BR-active-weeks, BR-evaluation-editable-until-close, BR-evaluation-submission-window, BR-evaluation-active-evaluatee, BR-evaluation-private-comment
 
 **Associated Information:**
 
 Details:
-- Every team member MUST be evaluated.
+- Every team member whose account is active MUST be evaluated.
 - Scores MUST be integers.
 
 Example (each team member, self included, is evaluated on every rubric criterion):
