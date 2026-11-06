@@ -1489,11 +1489,13 @@ Details:
 
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle, BR-section-scoped-access, BR-deactivated-student-team, BR-evaluation-active-evaluatee, BR-evaluation-report-deactivated
+**Business Rules:** BR-student-lifecycle, BR-section-scoped-access, BR-deactivated-student-team, BR-evaluation-active-evaluatee, BR-evaluation-report-deactivated, BR-lock-expiry
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
 - Deactivation happens only through this use case. The student edit path cannot deactivate a student, because it has no warning and no confirmation.
+- What deactivation leaves alone: she stays on her team (BR-deactivated-student-team). Peer evaluations she already wrote stay on record and still count toward her teammates' grades. A document-section edit lock she holds is not released early and expires under BR-lock-expiry.
+- The system does not notify the student that she has been deactivated; the alert in step 6 goes only to the course admin or instructor. She finds out at her next request or login.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student
 **Assumptions:**
