@@ -1493,6 +1493,7 @@ Details:
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- Deactivation happens only through this use case. The student edit path cannot deactivate a student, because it has no warning and no confirmation.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student
 **Assumptions:**
@@ -1534,6 +1535,7 @@ Details:
 - Weeks spent deactivated: she owed nothing for them (BR-submission-owed) and teammates could not newly evaluate her (BR-evaluation-active-evaluatee). Reactivation creates no make-up for those weeks (BR-evaluation-submission-window).
 - Her team: deactivation left her on her team (BR-deactivated-student-team), so reactivation returns her to it with no further action, unless a course admin removed her or deleted the team while she was deactivated. In that case she has no team until a course admin assigns one (BR-team-assignment-required).
 - Her token: a token issued before deactivation is refused while she is deactivated (FR-SEC-active-account). If it has not expired when she is reactivated, it is accepted again, so she may not need to log in again.
+- Until this use case is built, the status switch on the student edit form is the only way to reactivate a student, and it appears only for a deactivated student. A form opened while the student was active and saved after she was deactivated reactivates her without warning. Building this use case removes the switch and closes that gap.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
 **Assumptions:**
