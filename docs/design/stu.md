@@ -69,10 +69,10 @@ classDiagram
 
 **Frontend** (under `frontend/src/`)
 
-- [`pages/students/StudentPerformanceDashboard.vue`](../../frontend/src/pages/students/StudentPerformanceDashboard.vue): this page is the details view of UC-STU-view-student. It gains a status tag and, for an active student only, the Deactivate button and its `ElMessageBox` warning. On a 409 it reloads the student, so the page shows the true status. The request interceptor already shows the server's message.
+- [`pages/students/StudentPerformanceDashboard.vue`](../../frontend/src/pages/students/StudentPerformanceDashboard.vue): this page is the details view of UC-STU-view-student. It gains a status tag and, for an active student only, the Deactivate button and its `ElMessageBox` warning. The warning condenses all three consequence lines of the use case's Associated Information: she loses login and submission from her next request; her submitted work is kept; she stays on her team; she no longer owes anything and teammates no longer evaluate her; she can be reactivated. On a 409 it reloads the student, so the page shows the true status. The request interceptor already shows the server's message. The route already requires the `instructor` permission, so the button needs no role check of its own.
 - [`apis/student/index.ts`](../../frontend/src/apis/student/index.ts): new `deactivateStudent`.
 - [`pages/students/EditStudentForm.vue`](../../frontend/src/pages/students/EditStudentForm.vue): the Status switch renders only when the loaded student is deactivated.
-- [`pages/evaluations/SubmitTeamsEvaluations.vue`](../../frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue): a new submission builds rows only for teammates with `enabled` true. When a submission fails, the page reloads the student's saved evaluations and continues in update mode (UC-EVA-submit-evaluation extension 9a).
+- [`pages/evaluations/SubmitTeamsEvaluations.vue`](../../frontend/src/pages/evaluations/SubmitTeamsEvaluations.vue): a new submission builds rows only for teammates with `enabled` true. Submitting waits for every POST to settle (`Promise.allSettled`, because `Promise.all` rejects while others are still in flight and leaves `isLoading` set). If any was refused, the page refetches the teammates and the saved evaluations and rebuilds its rows (UC-EVA-submit-evaluation extension 9a). Rows are always saved evaluations plus a blank row for each active teammate with none, so an evaluator can still submit what she owes (BR-submission-owed); a saved row is PUT and a blank one is POSTed. Mode comes from what was saved. The confirmation email goes out when at least one evaluation was saved.
 
 ## Sequence
 
@@ -129,7 +129,7 @@ sequenceDiagram
 |---|---|---|---|---|
 | `POST /students/{studentId}/deactivate` (new) | An instructor assigned to the student's course section, or the course admin who owns its course | No body | 200, the student with `enabled: false` | 3b: 403, also for an id naming no student, because guards fail closed. 6a: 409 |
 | `PUT /students/{studentId}` (changed) | Unchanged | `enabled: false` from an instructor, on an active student | Other edits unchanged. `enabled: true` on a deactivated student still reactivates her (interim) | 400, message points to the deactivate action. A student's own `enabled` value is still ignored, not refused |
-| `POST /evaluations` (changed) | Unchanged | Evaluatee's account is not active | Unchanged | UC-EVA-submit-evaluation 9a: 400, naming the condition |
+| `POST /evaluations` (changed) | Unchanged | Evaluatee's account is not active | Unchanged | UC-EVA-submit-evaluation 9a: 400, naming the condition. Same status and code as the other refusals on this route, so the form treats every refused POST alike |
 | `GET /evaluations/sections/{sectionId}/week/{week}` (changed) | Unchanged | Unchanged | A deactivated student is listed only for weeks with evaluations of her (BR-evaluation-report-deactivated) | None new |
 | Any bearer-authenticated route (changed) | The token's account must be active | Unchanged | Unchanged | 401 when the account is deactivated or no longer exists |
 
@@ -143,6 +143,9 @@ sequenceDiagram
 - **The deactivated student stays on her team (BR-deactivated-student-team).** *Rejected:* removal, because `generateWeeklyPeerEvaluationReportForSection` filters on `team != null` and would drop her past weeks too, and because an instructor would be doing what BR-team-admin-only reserves for a course admin.
 - **The report rule keys on whether evaluations exist for the week.** `getPeerEvaluationAverage` returns 0.0 with no evaluations, which reads as a score of zero. *Rejected:* a stored deactivation date, which needs a migration and a reactivation rule and shows the instructor nothing more.
 - **The server enforces the evaluatee rule and the form only mirrors it.** `POST /evaluations` is reachable without the form. *Rejected:* filtering `findStudentsByTeamId`, which would make a roster lookup misreport team membership.
+- **Refusal timing for extension 3b.** The guard runs on the POST, so a direct call is refused there. In the UI, someone not permitted normally stops earlier, because `GET /students/{studentId}` already refuses her and the page does not load. *Rejected:* a client-side permission check before the warning, which would duplicate the guard and prove nothing.
+- **`deactivateStudent` loads by primary key, with no scoped query.** The architecture's point 2 exists because a route rule proves membership in the *container* named in the URL and not the object beside it. Here the guard reads the student named in the URL itself, so no second object can slip past, and a scoped query would have to repeat the two-branch guard. *Rejected:* a caller-scoped finder. This is a deliberate exception to [point 2](architectural-design.md#security--compliance); its reasoning does not reach this route.
+- **Two truly concurrent deactivations are not serialized.** Check-then-set can give both instructors a 200. The state ends correct and only one alert is wrong; core entities carry no row versioning. *Rejected:* a row lock or conditional update, a cost this rare action does not earn.
 - **Build order.** The validator and repository method are the trunk, since every authenticated request passes through them, so they are the first commit, on their own. The route rule and its guard come next, then the leaves.
 
 ## Reuse & cross-cutting
@@ -157,16 +160,16 @@ sequenceDiagram
 | Use case, flow | Level | Asserts |
 |---|---|---|
 | Main: assigned instructor deactivates | Integration | 200; `enabled` false; team unchanged; her weekly activity reports and peer evaluations still present |
-| Main: step 4 warning | Cypress, API stubbed | The dialog states the consequences, and no request is sent before confirming |
+| Main: step 4 warning | Cypress, API stubbed | The dialog states each consequence listed for the page above, and no request is sent before confirming |
 | Main: step 6 alert | Cypress, API stubbed | Success message shown; status shows deactivated |
 | Ext 3a: already deactivated | Cypress, API stubbed | Status shows deactivated; no Deactivate button |
-| Ext 3b: instructor of another course section | Integration | 403; student still active |
+| Ext 3b: instructor of another course section | Integration | 403 with the no-permission message (3b1); student still active |
 | Ext 3b: the student herself, and a teammate | Integration | 403; student still active |
 | Ext 3b: owning course admin not assigned to the course section | Integration | 200 (the permitted side of the boundary) |
 | Ext 3b: id naming no student | Integration | 403 |
 | Ext 5a: cancel at the warning | Cypress, API stubbed | Zero POST requests; still on the student's details |
-| Ext 6a: stale request | Unit and integration | 409; state unchanged |
-| Ext 6a: the page after a 409 | Cypress, API stubbed | Student reloaded; status shows deactivated; no Deactivate button |
+| Ext 6a: stale request | Unit and integration | 409 with a message saying she is already deactivated (6a1); state unchanged |
+| Ext 6a: the page after a 409 | Cypress, API stubbed | The already-deactivated alert shows; student reloaded; status shows deactivated; no Deactivate button |
 | POST-2: token issued before deactivation | Integration | The next request with that token gets 401 |
 | POST-2: login after deactivation | Integration | 401 |
 | FR-SEC-active-account: deactivated instructor's token | Integration | 401 |
@@ -175,8 +178,9 @@ sequenceDiagram
 | BR-evaluation-active-evaluatee: new evaluation of her | Unit and integration | 400; no row saved |
 | BR-evaluation-active-evaluatee: edit of an existing evaluation of her | Unit | Succeeds inside the submission window |
 | UC-EVA-submit-evaluation: the form | Cypress, API stubbed | A new submission has no row for a deactivated teammate |
-| UC-EVA-submit-evaluation ext 9a: deactivated while the form is open | Cypress, API stubbed | One POST refused; the page reloads saved evaluations and continues in update mode |
-| BR-evaluation-report-deactivated | Unit | Deactivated with evaluations: listed. Deactivated without: absent. Active without evaluations: listed |
+| UC-EVA-submit-evaluation ext 9a: deactivated while the form is open | Cypress, API stubbed | One POST refused; the reload waits for the others; saved rows shown, none for her; loading state cleared |
+| UC-EVA-submit-evaluation: active teammate with no saved evaluation | Cypress, API stubbed | A blank row appears beside saved rows; saving POSTs it and PUTs the rest |
+| BR-evaluation-report-deactivated | Unit | Deactivated with evaluations: listed. With only her self-evaluation: listed. Without any: absent. Deactivated and off her team: absent. Active without evaluations: listed |
 | Edit path: instructor sends `enabled: false` on an active student | Integration | 400; still active |
 | Edit path: instructor sends `enabled: true` on a deactivated student | Integration | Reactivated (interim) |
 | Edit path: student sends `enabled: false` on herself | Integration | Ignored; still active (existing test must keep passing) |
@@ -186,9 +190,10 @@ Cypress is not part of CI or `mvn package`. The row in `traceability.md` may cla
 
 ## Open questions / risks
 
-- **Course admin not assigned to the course section.** The new route admits her, but `GET /students/{studentId}` and the student list do not, so she can reach the action through the API and not through step 2 of the UI. It is rare, since creating a course section assigns its creator. Widening that shared guard is a separate decision, to be filed as a follow-up issue.
+- **Course admin not assigned to the course section.** The new route admits her, but `GET /students/{studentId}` and the student list do not, so she can reach the action through the API and not through step 2 of the UI. It is rare, since creating a course section assigns its creator. Widening that shared guard is a separate decision, tracked in #2.
 - **Stale edit form.** A form opened while she was active and saved after she was deactivated sends `enabled: true` and reactivates her. It ends when UC-STU-reactivate-student is built.
 - **An old token revives on reactivation.** The validator checks the account's present state, so an unexpired token works again once she is reactivated. Recorded in UC-STU-reactivate-student.
 - **One extra primary-key query per bearer request.** The SRS ranks security above performance. Not measured.
 - **Forgot-password is not blocked.** A deactivated student can still request a reset email and set a new password. Login stays refused, so access is not affected.
+- **Refused-submission reload discards typed rows.** When a POST is refused, the rebuilt rows keep saved evaluations only, so scores typed for a refused or failed row are lost. Rare, and no requirement depends on them.
 - **Login message.** A deactivated student's login gets the existing "User account is abnormal." Not improved here.
