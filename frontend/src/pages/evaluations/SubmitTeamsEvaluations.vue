@@ -107,15 +107,55 @@
     <div style="display: flex; justify-content: flex-end">
       <el-button
         type="primary"
-        @click="savePeerEvaluations"
+        @click="reviewPeerEvaluations"
         v-if="isNewSubmission"
         :loading="isLoading"
         >Submit</el-button
       >
-      <el-button type="warning" @click="savePeerEvaluations" :loading="isLoading" v-else
+      <el-button type="warning" @click="reviewPeerEvaluations" :loading="isLoading" v-else
         >Update</el-button
       >
     </div>
+    <!-- UC-EVA-submit-evaluation steps 6 to 8: nothing is sent until the student confirms what she entered -->
+    <el-dialog
+      v-model="isReviewing"
+      title="Review your peer evaluations"
+      width="90%"
+      data-cy="evaluation-review"
+    >
+      <el-table :data="peerEvalutions" style="width: 100%" border max-height="50vh">
+        <el-table-column label="Student Name" prop="evaluateeName" min-width="110" fixed />
+        <el-table-column
+          v-for="criterion in criteria"
+          :key="criterion.criterionId"
+          :label="criterion.description"
+          min-width="105"
+        >
+          <template #default="{ row }">{{ scoreFor(row, criterion) }}</template>
+        </el-table-column>
+        <el-table-column label="Total" min-width="70">
+          <template #default="{ row }">{{ totalFor(row) }}</template>
+        </el-table-column>
+        <el-table-column label="Public Comment" prop="publicComment" min-width="150" />
+        <el-table-column label="Private Comment" prop="privateComment" min-width="150" />
+      </el-table>
+      <p data-cy="evaluation-review-note">
+        You can update your peer evaluations and submit them again until the submission window for
+        this week closes.
+      </p>
+      <template #footer>
+        <el-button data-cy="evaluation-review-modify" @click="isReviewing = false"
+          >Modify</el-button
+        >
+        <el-button
+          type="primary"
+          data-cy="evaluation-review-confirm"
+          @click="confirmPeerEvaluations"
+        >
+          {{ isNewSubmission ? 'Confirm and submit' : 'Confirm and update' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -154,6 +194,7 @@ const students = ref<Student[]>([]) // Students on the same team
 const sectionId = ref<number>() // Section ID of the team
 const criteria = ref<Criterion[]>([]) // Criteria used for peer evaluations
 const isLoading = ref(false)
+const isReviewing = ref(false) // Whether the review dialog of steps 6 to 8 is open
 
 const userInfoStore = useUserInfoStore() // Need team ID to search for students
 
@@ -217,6 +258,36 @@ async function prepareStartingPeerEvaluations() {
     }))
 
   peerEvalutions.value = [...result.data, ...blankRows]
+}
+
+function scoreFor(row: PeerEvaluation, criterion: Criterion) {
+  return row.ratings.find((rating) => rating.criterionId === criterion.criterionId)?.actualScore
+}
+
+function totalFor(row: PeerEvaluation) {
+  return row.ratings.reduce((total, rating) => total + rating.actualScore, 0)
+}
+
+// Step 5 and extension 4a: a score field the student cleared holds no value, so she is told which one before the review.
+// A score cannot otherwise be invalid here, since the field keeps it a whole number within the criterion's range.
+function reviewPeerEvaluations() {
+  const rows = peerEvalutions.value
+  if (!rows?.length) return
+
+  for (const row of rows) {
+    for (const criterion of criteria.value) {
+      if (scoreFor(row, criterion) == null) {
+        ElMessage.error(`Enter a score for ${row.evaluateeName}: ${criterion.description}`)
+        return
+      }
+    }
+  }
+  isReviewing.value = true
+}
+
+async function confirmPeerEvaluations() {
+  isReviewing.value = false
+  await savePeerEvaluations()
 }
 
 // Saves every row: a saved row is updated and a blank one is submitted. It waits for all of them to settle, because a

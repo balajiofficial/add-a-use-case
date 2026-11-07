@@ -31,6 +31,7 @@ describe('Peer evaluation scores are whole numbers', () => {
     cy.get('.el-input-number input').first().should('have.value', '8')
 
     cy.contains('button', 'Submit').click()
+    cy.get('[data-cy=evaluation-review-confirm]').click()
 
     cy.wait('@submit').then(({ request }) => {
       const scores = request.body.ratings.map((rating) => rating.actualScore)

@@ -37,7 +37,8 @@ const saved = (student) => ({
   privateComment: ''
 })
 
-const ROWS = '.el-table__body-wrapper .el-table__row'
+// The review dialog has a table of its own, so these are the form's rows only
+const ROWS = '.page-container > .el-card__body > .el-table .el-table__row'
 
 describe('Submit peer evaluations with a deactivated teammate', () => {
   let teammates
@@ -85,6 +86,10 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     cy.wait('@saved')
   }
 
+  function confirmReview() {
+    cy.get('[data-cy=evaluation-review-confirm]').click()
+  }
+
   function rowsShouldBe(names) {
     cy.get(ROWS).should('have.length', names.length)
     names.forEach((name) => cy.get(ROWS).should('contain', name))
@@ -97,7 +102,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     open()
 
     rowsShouldBe(['John', 'Jerry'])
-    cy.get('.el-table').should('not.contain', 'Eric')
+    cy.get(ROWS).should('not.contain', 'Eric')
     cy.contains('button', 'Submit').scrollIntoView().should('be.visible')
   })
 
@@ -111,10 +116,11 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     })
 
     cy.contains('button', 'Submit').click()
+    confirmReview()
 
     cy.get('.el-message--error').should('contain', 'whose account is deactivated')
     rowsShouldBe(['John', 'Jerry'])
-    cy.get('.el-table').should('not.contain', 'Eric')
+    cy.get(ROWS).should('not.contain', 'Eric')
     cy.contains('button', 'Update').scrollIntoView().should('be.visible').and('not.have.class', 'is-loading')
     cy.wait('@receipt') // The two that were saved earn the confirmation email
   })
@@ -126,6 +132,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
     rowsShouldBe(['John', 'Eric', 'Jerry'])
 
     cy.contains('button', 'Update').click()
+    confirmReview()
 
     cy.wait('@submit').its('request.body.evaluateeId').should('eq', JERRY.id)
     cy.wait('@update')
@@ -144,6 +151,7 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
 
     rowsShouldBe(['John', 'Eric', 'Jerry'])
     cy.contains('button', 'Update').click()
+    confirmReview()
     cy.wait('@update')
     cy.get('.el-message--success').should('contain', 'Peer evaluations updated successfully')
     cy.get('@receipt.all').should('have.length', 0) // Nothing new was submitted
