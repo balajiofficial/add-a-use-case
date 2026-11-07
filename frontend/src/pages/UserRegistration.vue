@@ -153,8 +153,9 @@ onMounted(async () => {
   registration.value.email = email
   registration.value.username = email
   registrationToken.value = token
-  registrationCourseId.value = parseInt(courseId)
-  registrationSectionId.value = parseInt(sectionId)
+  // Left as NaN when the link does not carry them
+  if (courseId) registrationCourseId.value = parseInt(courseId)
+  if (sectionId) registrationSectionId.value = parseInt(sectionId)
   registrationRole.value = role
 
   ready.value = true // show the form only after all checks pass

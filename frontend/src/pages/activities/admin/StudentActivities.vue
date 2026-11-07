@@ -211,7 +211,7 @@ const barChartOptions = {
   },
   plugins: {
     legend: {
-      position: 'top'
+      position: 'top' as const
     },
     title: {
       display: true,
@@ -225,7 +225,7 @@ const doughnutChartOptions = {
   maintainAspectRatio: false,
   plugins: {
     legend: {
-      position: 'top'
+      position: 'top' as const
     },
     title: {
       display: true,
