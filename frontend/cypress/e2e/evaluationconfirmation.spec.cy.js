@@ -151,6 +151,26 @@ describe('Review peer evaluations before they are saved', () => {
     cy.get('@receipt.all').should('have.length', 0)
   })
 
+  it('submits once when the confirm button is double-clicked', () => {
+    open()
+
+    cy.contains('button', 'Submit').click()
+    cy.get(CONFIRM).dblclick()
+
+    cy.get('.el-message--success').should('contain', 'Peer evaluations submitted successfully')
+    cy.wait('@receipt')
+    cy.get('@submit.all').should('have.length', 2) // One per teammate
+    cy.get('@receipt.all').should('have.length', 1)
+  })
+
+  it('stops a comment at the 255 characters the server accepts (step 5)', () => {
+    open()
+
+    comments().eq(0).invoke('attr', 'maxlength').should('eq', '255')
+    comments().eq(1).invoke('attr', 'maxlength').should('eq', '255')
+    cy.get(FORM_ROWS).first().find('.el-input__count, .el-textarea__count').should('have.length', 2)
+  })
+
   it('names the missing score and shows no review when a score is blank (step 5, extension 4a)', () => {
     open()
     firstScore().clear().blur()

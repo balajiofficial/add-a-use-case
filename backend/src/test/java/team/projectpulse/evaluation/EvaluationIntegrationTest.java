@@ -215,6 +215,58 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
         assertThat(this.evaluationRepository.findById(1).orElseThrow().getTotalScore()).isEqualTo(totalScoreBefore);
     }
 
+    private static List<RatingDto> validRatings() {
+        return List.of(
+                new RatingDto(null, 1, 4.0),
+                new RatingDto(null, 2, 9.0),
+                new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0),
+                new RatingDto(null, 5, 5.0),
+                new RatingDto(null, 6, 6.0)
+        );
+    }
+
+    @Test
+    void testStudentJohnAddEvaluationWithAPublicCommentOverTheLimitIsRefused() throws Exception { // UC-EVA-submit-evaluation 4a
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", validRatings(), 41.0, "x".repeat(256), "Keep it up", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.data.publicComment").value("public comment must be at most 255 characters."));
+    }
+
+    @Test
+    void testStudentJohnUpdatesOwnEvaluationWithAPrivateCommentOverTheLimitIsRefused() throws Exception { // UC-EVA-submit-evaluation 4a
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(1, "2023-W31", 4, "John Smith", 5, "Eric Hudson", validRatings(), 41.0, "Good job", "x".repeat(256), null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(put(this.baseUrl + "/evaluations/1").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.data.privateComment").value("private comment must be at most 255 characters."));
+    }
+
+    @Test
+    void testStudentJohnAddEvaluationWithCommentsAtTheLimitIsSaved() throws Exception { // The boundary: the column holds 255
+        LocalDate fixedDate = LocalDate.of(2023, 9, 15); // The previous week is 2023-W36
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", validRatings(), 41.0, "x".repeat(255), "y".repeat(255), null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.publicComment").value("x".repeat(255)));
+        this.entityManager.flush(); // The insert has to reach the column for this to prove the column holds 255
+    }
+
     @Test
     void testStudentJohnAddEvaluationNotInActiveWeeks() throws Exception {
         List<RatingDto> ratingDtos = List.of(

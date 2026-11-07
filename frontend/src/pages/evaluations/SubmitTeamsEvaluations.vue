@@ -73,7 +73,7 @@
             type="textarea"
             :rows="5"
             placeholder="Enter public comment"
-            max-length="255"
+            maxlength="255"
             show-word-limit
           />
         </template>
@@ -94,7 +94,7 @@
             type="textarea"
             :rows="5"
             placeholder="Enter private comment"
-            max-length="255"
+            maxlength="255"
             show-word-limit
           />
         </template>
@@ -295,7 +295,9 @@ async function confirmPeerEvaluations() {
 // finish before the page shows what was saved. The request interceptor has already shown the server's reason for a refusal.
 async function savePeerEvaluations() {
   const rows = peerEvalutions.value
-  if (!rows) return
+  // A second click on the confirm button lands during the dialog's leave transition. Blank rows have no evaluationId until
+  // this save settles, so without this check they would all be submitted twice.
+  if (!rows || isLoading.value) return
 
   const wasNewSubmission = isNewSubmission.value
   isLoading.value = true
