@@ -67,6 +67,12 @@ public class EvaluationService {
             throw new PeerEvaluationIllegalArgumentException("The evaluator and evaluatee must be on the same team.");
         }
 
+        // A new evaluation only of a teammate whose account is active (BR-evaluation-active-evaluatee). An evaluation
+        // written before she was deactivated stays editable, so updatePeerEvaluation deliberately has no such check.
+        if (!newPeerEvaluation.getEvaluatee().isEnabled()) {
+            throw new PeerEvaluationIllegalArgumentException("You cannot submit a new peer evaluation of a teammate whose account is deactivated.");
+        }
+
         // Make sure this is not a duplicate evaluation
         if (this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId(newPeerEvaluation.getWeek(), newPeerEvaluation.getEvaluator().getId(), newPeerEvaluation.getEvaluatee().getId()).isPresent()) {
             throw new PeerEvaluationIllegalArgumentException("You have already submitted an evaluation for " + newPeerEvaluation.getEvaluatee().getFirstName() + " in this week.");
@@ -220,8 +226,12 @@ public class EvaluationService {
 
         report.setSectionName(this.sectionRepository.findById(sectionId).orElseThrow(() -> new ObjectNotFoundException("section", sectionId)).getSectionName());
 
-        // Get all students in the section
-        List<Student> students = this.studentRepository.findBySectionSectionId(sectionId).stream().filter(student -> student.getTeam() != null).collect(Collectors.toList());
+        // Get the students this report lists (BR-evaluation-report-deactivated): those on a team, leaving out a deactivated
+        // student for a week with no evaluations of her, whose average of 0.0 would read as a score of zero
+        List<Student> students = this.studentRepository.findBySectionSectionId(sectionId).stream()
+                .filter(student -> student.getTeam() != null)
+                .filter(student -> student.isEnabled() || !this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId()).isEmpty())
+                .collect(Collectors.toList());
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
         students.forEach(student -> {

@@ -6,6 +6,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import team.projectpulse.AbstractIntegrationTest;
 import team.projectpulse.evaluation.dto.PeerEvaluationDto;
 import team.projectpulse.evaluation.dto.RatingDto;
+import team.projectpulse.student.Student;
 import team.projectpulse.system.StatusCode;
 import org.hamcrest.Matchers;
 import org.json.JSONObject;
@@ -33,6 +34,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DisplayName("Integration tests for Evaluation API endpoints")
 public class EvaluationIntegrationTest extends AbstractIntegrationTest {
@@ -135,6 +137,36 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.privateComment").value("Keep it up"))
                 .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.data.updatedAt").isNotEmpty());
+    }
+
+    @Test
+    void testStudentJohnAddEvaluationOfADeactivatedTeammateIsRefused() throws Exception { // BR-evaluation-active-evaluatee, UC-EVA-submit-evaluation 9a
+        List<RatingDto> ratingDtos = List.of(
+                new RatingDto(null, 1, 4.0),
+                new RatingDto(null, 2, 9.0),
+                new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0),
+                new RatingDto(null, 5, 5.0),
+                new RatingDto(null, 6, 6.0)
+        );
+
+        LocalDate fixedDate = LocalDate.of(2023, 9, 15); // The previous week is 2023-W36
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        this.entityManager.find(Student.class, 5).setEnabled(false); // Eric, John's teammate
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", ratingDtos, 41.0, "Good job", "Keep it up", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("You cannot submit a new peer evaluation of a teammate whose account is deactivated."));
+
+        assertThat(this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId("2023-W36", 4, 5)).isEmpty();
     }
 
     @Test
