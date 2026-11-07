@@ -70,8 +70,12 @@ const tokenStore = useTokenStore()
 const userInfoStore = useUserInfoStore()
 const settingsStore = useSettingsStore()
 
-import { inject } from 'vue'
-const { isCollapse, toggleCollapse } = inject('menuCollapse')
+import { inject, type Ref } from 'vue'
+// Provided by Dashboard.vue, the only layout that renders this bar
+const { isCollapse, toggleCollapse } = inject<{
+  isCollapse: Ref<boolean>
+  toggleCollapse: () => void
+}>('menuCollapse')!
 
 const refresh = () => {
   router.go(0)

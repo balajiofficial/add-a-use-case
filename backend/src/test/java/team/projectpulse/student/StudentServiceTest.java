@@ -5,6 +5,8 @@ import team.projectpulse.instructor.Instructor;
 import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.UserUtils;
+import team.projectpulse.system.exception.ObjectNotFoundException;
+import team.projectpulse.system.exception.StudentAlreadyDeactivatedException;
 import team.projectpulse.user.MyUserPrincipal;
 import team.projectpulse.user.userinvitation.UserInvitationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -150,13 +153,7 @@ class StudentServiceTest {
         assertThat(result.isEnabled()).isNotEqualTo(update.isEnabled());
     }
 
-    @Test
-    void testInstructorUpdatesStudent() {
-        // Given
-        Student update = new Student("john", "John (updated)", "Smith (updated)", "j.smith@abc.edu (updated)", "", false, "admin student");
-        given(this.studentRepository.findById(1)).willReturn(Optional.of(this.students.get(0)));
-        given(this.studentRepository.save(any(Student.class))).willReturn(this.students.get(0));
-
+    private void logInAsInstructor() {
         Instructor instructor = new Instructor();
         instructor.setRoles("instructor");
         MyUserPrincipal myUserPrincipal = new MyUserPrincipal(instructor);
@@ -164,6 +161,50 @@ class StudentServiceTest {
         SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
         securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(myUserPrincipal, null, myUserPrincipal.getAuthorities()));
         SecurityContextHolder.setContext(securityContext);
+    }
+
+    @Test
+    void testInstructorCannotDeactivateStudentByEditing() {
+        // Given
+        Student john = this.students.get(0);
+        Student update = new Student("john", "John (updated)", "Smith (updated)", "j.smith@abc.edu (updated)", "", false, "student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        logInAsInstructor();
+
+        // When and then
+        assertThatThrownBy(() -> this.studentService.updateStudent(1, update))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("A student cannot be deactivated by editing. Use Deactivate on the student's details page.");
+        assertThat(john.isEnabled()).isTrue();
+        assertThat(john.getFirstName()).isEqualTo("John"); // A refused edit changes nothing, not only the status
+        verify(this.studentRepository, never()).save(any(Student.class));
+    }
+
+    @Test
+    void testInstructorEditsDeactivatedStudentWithoutReactivatingHer() {
+        // Given
+        Student john = this.students.get(0);
+        john.setEnabled(false);
+        Student update = new Student("john", "John (updated)", "Smith", "j.smith@abc.edu", "", false, "student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(john)).willReturn(john);
+        logInAsInstructor();
+
+        // When
+        Student result = this.studentService.updateStudent(1, update);
+
+        // Then
+        assertThat(result.getFirstName()).isEqualTo("John (updated)");
+        assertThat(result.isEnabled()).isFalse();
+    }
+
+    @Test
+    void testInstructorUpdatesStudent() {
+        // Given
+        Student update = new Student("john", "John (updated)", "Smith (updated)", "j.smith@abc.edu (updated)", "", true, "admin student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(this.students.get(0)));
+        given(this.studentRepository.save(any(Student.class))).willReturn(this.students.get(0));
+        logInAsInstructor();
 
         // When
         Student result = this.studentService.updateStudent(1, update);
@@ -175,6 +216,46 @@ class StudentServiceTest {
         assertThat(result.getEmail()).isEqualTo(update.getEmail());
 //        assertThat(result.getRoles()).isEqualTo(update.getRoles());
         assertThat(result.isEnabled()).isEqualTo(update.isEnabled());
+    }
+
+    @Test
+    void testDeactivateStudent() {
+        // Given
+        Student john = this.students.get(0);
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(john)).willReturn(john);
+
+        // When
+        Student result = this.studentService.deactivateStudent(1);
+
+        // Then
+        assertThat(result.isEnabled()).isFalse();
+        verify(this.studentRepository).save(john);
+    }
+
+    @Test
+    void testDeactivateStudentWhoIsAlreadyDeactivated() { // Extension 6a
+        // Given
+        Student john = this.students.get(0);
+        john.setEnabled(false);
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+
+        // When and then
+        assertThatThrownBy(() -> this.studentService.deactivateStudent(1))
+                .isInstanceOf(StudentAlreadyDeactivatedException.class)
+                .hasMessage("This student is already deactivated.");
+        assertThat(john.isEnabled()).isFalse();
+        verify(this.studentRepository, never()).save(any(Student.class));
+    }
+
+    @Test
+    void testDeactivateStudentNotFound() {
+        // Given
+        given(this.studentRepository.findById(999)).willReturn(Optional.empty());
+
+        // When and then
+        assertThatThrownBy(() -> this.studentService.deactivateStudent(999))
+                .isInstanceOf(ObjectNotFoundException.class);
     }
 
     @Test

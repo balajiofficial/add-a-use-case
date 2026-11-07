@@ -112,6 +112,52 @@ class ReminderIntegrationTest extends AbstractIntegrationTest {
                 .doesNotContain("Smith");
     }
 
+    // UC-STU-deactivate-student, BR-submission-owed
+
+    private void deactivate(Student student) throws Exception {
+        this.mockMvc.perform(post(this.baseUrl + "/students/" + student.getId() + "/deactivate")
+                        .header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void testADeactivatedStudentOwesNothingAndIsNotReminded() throws Exception {
+        // Given: Jerry owes a weekly activity report for the week
+        deactivate(student("j.moon@abc.edu"));
+
+        // When
+        sendReminders(this.instructorBillToken, "WEEKLY_ACTIVITY_REPORT")
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.sent").value(8));
+
+        // Then
+        ArgumentCaptor<String> recipients = ArgumentCaptor.forClass(String.class);
+        verify(this.emailService, times(8)).sendReminderEmail(recipients.capture(), anyString(), anyString());
+        assertThat(recipients.getAllValues()).doesNotContain("j.moon@abc.edu");
+    }
+
+    @Test
+    void testATeammateWhoEvaluatedEveryoneElseOwesNothingAfterTheDeactivation() throws Exception {
+        // Given: John evaluated everyone on his team but Jerry, who is then deactivated
+        Student john = student("j.smith@abc.edu");
+        Student jerry = student("j.moon@abc.edu");
+        this.entityManager.createQuery("delete from Rating r where r.peerEvaluation.evaluator = :john and r.peerEvaluation.evaluatee = :jerry and r.peerEvaluation.week = :week")
+                .setParameter("john", john).setParameter("jerry", jerry).setParameter("week", WEEK).executeUpdate();
+        this.entityManager.createQuery("delete from PeerEvaluation e where e.evaluator = :john and e.evaluatee = :jerry and e.week = :week")
+                .setParameter("john", john).setParameter("jerry", jerry).setParameter("week", WEEK).executeUpdate();
+        deactivate(jerry);
+
+        // When
+        sendReminders(this.instructorBillToken, "PEER_EVALUATION")
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.sent").value(8));
+
+        // Then: the same setup reminds John while Jerry is active, as the test below shows
+        ArgumentCaptor<String> recipients = ArgumentCaptor.forClass(String.class);
+        verify(this.emailService, times(8)).sendReminderEmail(recipients.capture(), anyString(), anyString());
+        assertThat(recipients.getAllValues()).doesNotContain("j.smith@abc.edu", "j.moon@abc.edu");
+    }
+
     @Test
     void testRemindPeerEvaluationEmailsAStudentWhoEvaluatedOnlySomeTeammates() throws Exception {
         // Given: John's evaluation of Jerry is removed, so he evaluated two of his three teammates (himself included)

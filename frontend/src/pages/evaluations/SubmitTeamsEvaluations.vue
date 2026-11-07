@@ -50,6 +50,7 @@
               :min="0"
               :max="criterion.maxScore"
               :step="1"
+              step-strictly
               controls-position="right"
               style="width: 80px"
             />
@@ -72,7 +73,7 @@
             type="textarea"
             :rows="5"
             placeholder="Enter public comment"
-            max-length="255"
+            maxlength="255"
             show-word-limit
           />
         </template>
@@ -93,7 +94,7 @@
             type="textarea"
             :rows="5"
             placeholder="Enter private comment"
-            max-length="255"
+            maxlength="255"
             show-word-limit
           />
         </template>
@@ -106,20 +107,60 @@
     <div style="display: flex; justify-content: flex-end">
       <el-button
         type="primary"
-        @click="submitPeerEvaluations"
+        @click="reviewPeerEvaluations"
         v-if="isNewSubmission"
         :loading="isLoading"
         >Submit</el-button
       >
-      <el-button type="warning" @click="updatePeerEvaluations" :loading="isLoading" v-else
+      <el-button type="warning" @click="reviewPeerEvaluations" :loading="isLoading" v-else
         >Update</el-button
       >
     </div>
+    <!-- UC-EVA-submit-evaluation steps 6 to 8: nothing is sent until the student confirms what she entered -->
+    <el-dialog
+      v-model="isReviewing"
+      title="Review your peer evaluations"
+      width="90%"
+      data-cy="evaluation-review"
+    >
+      <el-table :data="peerEvalutions" style="width: 100%" border max-height="50vh">
+        <el-table-column label="Student Name" prop="evaluateeName" min-width="110" fixed />
+        <el-table-column
+          v-for="criterion in criteria"
+          :key="criterion.criterionId"
+          :label="criterion.description"
+          min-width="105"
+        >
+          <template #default="{ row }">{{ scoreFor(row, criterion) }}</template>
+        </el-table-column>
+        <el-table-column label="Total" min-width="70">
+          <template #default="{ row }">{{ totalFor(row) }}</template>
+        </el-table-column>
+        <el-table-column label="Public Comment" prop="publicComment" min-width="150" />
+        <el-table-column label="Private Comment" prop="privateComment" min-width="150" />
+      </el-table>
+      <p data-cy="evaluation-review-note">
+        You can update your peer evaluations and submit them again until the submission window for
+        this week closes.
+      </p>
+      <template #footer>
+        <el-button data-cy="evaluation-review-modify" @click="isReviewing = false"
+          >Modify</el-button
+        >
+        <el-button
+          type="primary"
+          data-cy="evaluation-review-confirm"
+          @click="confirmPeerEvaluations"
+        >
+          {{ isNewSubmission ? 'Confirm and submit' : 'Confirm and update' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { findStudentsByTeamId } from '@/apis/student'
 import type { Student, FindStudentByTeamIdResponse } from '@/apis/student/types'
 import { findSectionById } from '@/apis/section'
@@ -135,13 +176,7 @@ import {
   sendPeerEvaluationSubmissionConfirmationEmail
 } from '@/apis/evaluation'
 import { ElMessage } from 'element-plus'
-import type {
-  FetchPeerEvaluationsResponse,
-  PeerEvaluation,
-  Rating,
-  SubmitPeerEvaluationResponse,
-  UpdatePeerEvaluationResponse
-} from '@/apis/evaluation/types'
+import type { FetchPeerEvaluationsResponse, PeerEvaluation, Rating } from '@/apis/evaluation/types'
 
 const previousWeek = ref<string>('')
 const previousWeekRange = ref<string>('')
@@ -150,7 +185,8 @@ const peerEvalutions = ref<PeerEvaluation[]>()
 
 const loading = ref<boolean>(false)
 
-let isNewSubmission = true // Flag to indicate if this is a new submission or an update
+// A new submission until something has been saved for this week; an update from then on
+const isNewSubmission = computed(() => !peerEvalutions.value?.some((row) => row.evaluationId))
 
 const teamId = ref<number>(NaN) // Team ID of the student
 
@@ -158,6 +194,7 @@ const students = ref<Student[]>([]) // Students on the same team
 const sectionId = ref<number>() // Section ID of the team
 const criteria = ref<Criterion[]>([]) // Criteria used for peer evaluations
 const isLoading = ref(false)
+const isReviewing = ref(false) // Whether the review dialog of steps 6 to 8 is open
 
 const userInfoStore = useUserInfoStore() // Need team ID to search for students
 
@@ -174,7 +211,7 @@ onMounted(async () => {
   sectionId.value = (userInfoStore.userInfo as Student).sectionId
   await loadCriteria()
   loading.value = true
-  prepareStartingPeerEvaluations()
+  await prepareStartingPeerEvaluations()
   loading.value = false
 })
 
@@ -194,22 +231,19 @@ async function loadCriteria() {
   criteria.value = rubricResult.data.criteria!
 }
 
-// Create starting peer evaluations
+// The rows are always what has been saved for the week plus a blank row for each active teammate with none, so a saved
+// evaluation of a deactivated teammate stays editable (BR-evaluation-active-evaluatee) and the student can still submit
+// whatever she owes (BR-submission-owed).
 async function prepareStartingPeerEvaluations() {
-  // Get the evaluations for the current week
   const result: FetchPeerEvaluationsResponse = await getEvaluationsByEvaluatorIdAndWeek(
     (userInfoStore.userInfo as Student).id as number,
     previousWeek.value
   )
 
-  // If the student has already submitted evaluations for the current week, load them
-  if (result.data.length > 0) {
-    peerEvalutions.value = result.data
-    isNewSubmission = false
-  } else {
-    // If not, create a new set of evaluations
-    isNewSubmission = true
-    peerEvalutions.value = students.value.map((student) => ({
+  const evaluateeIds = new Set(result.data.map((evaluation) => evaluation.evaluateeId))
+  const blankRows: PeerEvaluation[] = students.value
+    .filter((student) => student.enabled && !evaluateeIds.has(student.id as number))
+    .map((student) => ({
       week: previousWeek.value,
       evaluatorId: (userInfoStore.userInfo as Student).id as number,
       evaluateeId: student.id as number,
@@ -222,40 +256,83 @@ async function prepareStartingPeerEvaluations() {
       publicComment: '',
       privateComment: ''
     }))
-  }
+
+  peerEvalutions.value = [...result.data, ...blankRows]
 }
 
-// Submit peer evaluations
-async function submitPeerEvaluations() {
-  if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: SubmitPeerEvaluationResponse = await submitEvaluation(evaluation)
-      return result.data
-    })
-    isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    isNewSubmission = false // Change to update mode
-    ElMessage.success('Peer evaluations submitted successfully')
-    isLoading.value = false
+function scoreFor(row: PeerEvaluation, criterion: Criterion) {
+  return row.ratings.find((rating) => rating.criterionId === criterion.criterionId)?.actualScore
+}
 
-    // Send an submission confirmation email to the submitter
+function totalFor(row: PeerEvaluation) {
+  return row.ratings.reduce((total, rating) => total + rating.actualScore, 0)
+}
+
+// Step 5 and extension 4a: a score field the student cleared holds no value, so she is told which one before the review.
+// A score cannot otherwise be invalid here, since the field keeps it a whole number within the criterion's range.
+function reviewPeerEvaluations() {
+  const rows = peerEvalutions.value
+  if (!rows?.length) return
+
+  for (const row of rows) {
+    for (const criterion of criteria.value) {
+      if (scoreFor(row, criterion) == null) {
+        ElMessage.error(`Enter a score for ${row.evaluateeName}: ${criterion.description}`)
+        return
+      }
+    }
+  }
+  isReviewing.value = true
+}
+
+async function confirmPeerEvaluations() {
+  isReviewing.value = false
+  await savePeerEvaluations()
+}
+
+// Saves every row: a saved row is updated and a blank one is submitted. It waits for all of them to settle, because a
+// teammate may have been deactivated since this page loaded (UC-EVA-submit-evaluation extension 9a) and the rest must still
+// finish before the page shows what was saved. The request interceptor has already shown the server's reason for a refusal.
+async function savePeerEvaluations() {
+  const rows = peerEvalutions.value
+  // A second click on the confirm button lands during the dialog's leave transition. Blank rows have no evaluationId until
+  // this save settles, so without this check they would all be submitted twice.
+  if (!rows || isLoading.value) return
+
+  const wasNewSubmission = isNewSubmission.value
+  isLoading.value = true
+  let submittedAny = false
+  try {
+    const results = await Promise.allSettled(
+      rows.map((row) => (row.evaluationId ? updateEvaluation(row) : submitEvaluation(row)))
+    )
+    submittedAny = results.some(
+      (result, index) => result.status === 'fulfilled' && !rows[index]?.evaluationId
+    )
+
+    const saved = results.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value.data] : []
+    )
+    if (saved.length === rows.length) {
+      peerEvalutions.value = saved
+      ElMessage.success(
+        `Peer evaluations ${wasNewSubmission ? 'submitted' : 'updated'} successfully`
+      )
+    } else {
+      await loadStudents()
+      await prepareStartingPeerEvaluations()
+      ElMessage.warning(
+        'Some peer evaluations were not saved. This page now shows the ones that were.'
+      )
+    }
+  } finally {
+    isLoading.value = false
+  }
+
+  // Send a submission confirmation email to the submitter
+  if (submittedAny) {
     await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
     ElMessage.success('A confirmation email has been sent to you.')
-  }
-}
-
-// Update peer evaluations
-async function updatePeerEvaluations() {
-  if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: UpdatePeerEvaluationResponse = await updateEvaluation(evaluation)
-      return result.data
-    })
-
-    isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    ElMessage.success('Peer evaluations updated successfully')
-    isLoading.value = false
   }
 }
 </script>
