@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -16,11 +17,15 @@ import team.projectpulse.evaluation.PeerEvaluationRepository;
 import team.projectpulse.instructor.Instructor;
 import team.projectpulse.section.Section;
 import team.projectpulse.system.StatusCode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,6 +43,9 @@ class StudentDeactivationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     StudentRepository studentRepository;
+
+    @Autowired
+    JsonMapper jsonMapper;
 
     @Autowired
     ActivityRepository activityRepository;
@@ -162,6 +170,53 @@ class StudentDeactivationIntegrationTest extends AbstractIntegrationTest {
         this.mockMvc.perform(post(this.baseUrl + "/users/login").with(httpBasic("j.smith@abc.edu", "123456")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(StatusCode.UNAUTHORIZED));
+    }
+
+    private ResultActions editJohn(boolean enabled, String token) throws Exception {
+        String body = this.jsonMapper.writeValueAsString(Map.of(
+                "username", "j.smith@abc.edu", "firstName", "John (edited)", "lastName", "Smith", "email", "j.smith@abc.edu", "enabled", enabled));
+        return this.mockMvc.perform(put(this.baseUrl + "/students/" + JOHN_ID)
+                .contentType(MediaType.APPLICATION_JSON).content(body).header(HttpHeaders.AUTHORIZATION, token));
+    }
+
+    @Test
+    void testInstructorCannotDeactivateByEditing() throws Exception {
+        editJohn(false, this.instructorBillToken)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("A student cannot be deactivated by editing. Use Deactivate on the student's details page."));
+
+        assertThat(john().isEnabled()).isTrue();
+        assertThat(john().getFirstName()).isEqualTo("John");
+    }
+
+    @Test
+    void testInstructorEditingAnActiveStudentKeepsHerActive() throws Exception {
+        editJohn(true, this.instructorBillToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.firstName").value("John (edited)"))
+                .andExpect(jsonPath("$.data.enabled").value(true));
+    }
+
+    @Test
+    void testInstructorCanStillReactivateByEditingUntilReactivationIsBuilt() throws Exception { // Interim, see UC-STU-reactivate-student
+        deactivate(JOHN_ID, this.instructorBillToken).andExpect(status().isOk());
+
+        editJohn(true, this.instructorBillToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(true));
+
+        assertThat(john().isEnabled()).isTrue();
+    }
+
+    @Test
+    void testStudentEditingHerselfCannotChangeHerStatus() throws Exception {
+        editJohn(false, this.studentJohnToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enabled").value(true));
+
+        assertThat(john().isEnabled()).isTrue();
     }
 
     @Test

@@ -13,7 +13,8 @@
     <el-form-item label="Username:" prop="username">
       <el-input v-model="studentBeingEdited.username"></el-input>
     </el-form-item>
-    <el-form-item label="Status:" prop="enabled">
+    <!-- Deactivating has its own action with a warning, so this switch can only reactivate (UC-STU-reactivate-student) -->
+    <el-form-item v-if="isDeactivated" label="Status:" prop="enabled" data-cy="student-status">
       <el-switch
         v-model="studentBeingEdited.enabled"
         inline-prompt
@@ -62,6 +63,8 @@ const studentBeingEdited = ref<Student>({
   email: ''
 })
 
+const isDeactivated = ref<boolean>(false) // Whether the student was deactivated when this form loaded her
+
 const studentForm = ref<FormInstance>() // Form reference
 
 // Validation rules
@@ -94,6 +97,7 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.id = result.data.id as number
   studentBeingEdited.value.username = result.data.username
   studentBeingEdited.value.enabled = result.data.enabled
+  isDeactivated.value = !result.data.enabled
   studentBeingEdited.value.firstName = result.data.firstName
   studentBeingEdited.value.lastName = result.data.lastName
   studentBeingEdited.value.email = result.data.email

@@ -109,16 +109,24 @@ public class StudentService {
         Student oldStudent = this.studentRepository.findById(studentId)
                 .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
 
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean callerIsInstructor = authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"));
+
+        // Deactivation happens only through UC-STU-deactivate-student, which warns and asks for confirmation. Checked
+        // before anything is changed, so a refused edit leaves the student as she was. The opposite direction stays
+        // open because UC-STU-reactivate-student is not built yet.
+        if (callerIsInstructor && oldStudent.isEnabled() && !update.isEnabled()) {
+            throw new IllegalArgumentException("A student cannot be deactivated by editing. Use Deactivate on the student's details page.");
+        }
+
         // If the user is not an admin, then the user can only update her username, first rubricName, last rubricName, and email
         oldStudent.setUsername(update.getUsername());
         oldStudent.setFirstName(update.getFirstName());
         oldStudent.setLastName(update.getLastName());
         oldStudent.setEmail(update.getEmail());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
         // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
+        if (callerIsInstructor) {
             oldStudent.setEnabled(update.isEnabled());
 //            oldStudent.setRoles(update.getRoles());
         }

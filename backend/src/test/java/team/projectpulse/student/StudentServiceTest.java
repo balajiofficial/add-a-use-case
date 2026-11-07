@@ -153,13 +153,7 @@ class StudentServiceTest {
         assertThat(result.isEnabled()).isNotEqualTo(update.isEnabled());
     }
 
-    @Test
-    void testInstructorUpdatesStudent() {
-        // Given
-        Student update = new Student("john", "John (updated)", "Smith (updated)", "j.smith@abc.edu (updated)", "", false, "admin student");
-        given(this.studentRepository.findById(1)).willReturn(Optional.of(this.students.get(0)));
-        given(this.studentRepository.save(any(Student.class))).willReturn(this.students.get(0));
-
+    private void logInAsInstructor() {
         Instructor instructor = new Instructor();
         instructor.setRoles("instructor");
         MyUserPrincipal myUserPrincipal = new MyUserPrincipal(instructor);
@@ -167,6 +161,50 @@ class StudentServiceTest {
         SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
         securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(myUserPrincipal, null, myUserPrincipal.getAuthorities()));
         SecurityContextHolder.setContext(securityContext);
+    }
+
+    @Test
+    void testInstructorCannotDeactivateStudentByEditing() {
+        // Given
+        Student john = this.students.get(0);
+        Student update = new Student("john", "John (updated)", "Smith (updated)", "j.smith@abc.edu (updated)", "", false, "student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        logInAsInstructor();
+
+        // When and then
+        assertThatThrownBy(() -> this.studentService.updateStudent(1, update))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("A student cannot be deactivated by editing. Use Deactivate on the student's details page.");
+        assertThat(john.isEnabled()).isTrue();
+        assertThat(john.getFirstName()).isEqualTo("John"); // A refused edit changes nothing, not only the status
+        verify(this.studentRepository, never()).save(any(Student.class));
+    }
+
+    @Test
+    void testInstructorEditsDeactivatedStudentWithoutReactivatingHer() {
+        // Given
+        Student john = this.students.get(0);
+        john.setEnabled(false);
+        Student update = new Student("john", "John (updated)", "Smith", "j.smith@abc.edu", "", false, "student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(john));
+        given(this.studentRepository.save(john)).willReturn(john);
+        logInAsInstructor();
+
+        // When
+        Student result = this.studentService.updateStudent(1, update);
+
+        // Then
+        assertThat(result.getFirstName()).isEqualTo("John (updated)");
+        assertThat(result.isEnabled()).isFalse();
+    }
+
+    @Test
+    void testInstructorUpdatesStudent() {
+        // Given
+        Student update = new Student("john", "John (updated)", "Smith (updated)", "j.smith@abc.edu (updated)", "", true, "admin student");
+        given(this.studentRepository.findById(1)).willReturn(Optional.of(this.students.get(0)));
+        given(this.studentRepository.save(any(Student.class))).willReturn(this.students.get(0));
+        logInAsInstructor();
 
         // When
         Student result = this.studentService.updateStudent(1, update);
