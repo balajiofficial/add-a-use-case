@@ -54,6 +54,9 @@ public class Rating {
         if (actualScore > criterion.getMaxScore() || actualScore < 0) {
             throw new IllegalArgumentException("Actual score must be between 0 and " + criterion.getMaxScore());
         }
+        if (actualScore % 1 != 0) { // UC-EVA-submit-evaluation: scores must be integers
+            throw new IllegalArgumentException("Actual score must be a whole number.");
+        }
         this.actualScore = actualScore;
     }
 

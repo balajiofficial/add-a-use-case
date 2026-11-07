@@ -169,6 +169,52 @@ public class EvaluationIntegrationTest extends AbstractIntegrationTest {
         assertThat(this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId("2023-W36", 4, 5)).isEmpty();
     }
 
+    private static List<RatingDto> ratingsWithAFractionalScore() {
+        return List.of(
+                new RatingDto(null, 1, 7.5),
+                new RatingDto(null, 2, 9.0),
+                new RatingDto(null, 3, 7.0),
+                new RatingDto(null, 4, 10.0),
+                new RatingDto(null, 5, 5.0),
+                new RatingDto(null, 6, 6.0)
+        );
+    }
+
+    @Test
+    void testStudentJohnAddEvaluationWithAFractionalScoreIsRefused() throws Exception { // UC-EVA-submit-evaluation 4a
+        LocalDate fixedDate = LocalDate.of(2023, 9, 15); // The previous week is 2023-W36
+        Clock fixedClock = Clock.fixed(fixedDate.atStartOfDay(ZoneId.systemDefault()).toInstant(), ZoneId.systemDefault());
+        given(this.clock.instant()).willReturn(fixedClock.instant());
+        given(this.clock.getZone()).willReturn(fixedClock.getZone());
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(null, "2023-W36", 4, "John Smith", 5, "Eric Hudson", ratingsWithAFractionalScore(), 44.5, "Good job", "Keep it up", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(post(this.baseUrl + "/evaluations").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("Actual score must be a whole number."));
+
+        assertThat(this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId("2023-W36", 4, 5)).isEmpty();
+    }
+
+    @Test
+    void testStudentJohnUpdatesOwnEvaluationWithAFractionalScoreIsRefused() throws Exception { // UC-EVA-submit-evaluation 4a
+        Double totalScoreBefore = this.evaluationRepository.findById(1).orElseThrow().getTotalScore();
+
+        PeerEvaluationDto peerEvaluationDto = new PeerEvaluationDto(1, "2023-W31", 4, "John Smith", 5, "Eric Hudson", ratingsWithAFractionalScore(), 44.5, "Good job", "Keep it up", null, null);
+        String json = this.jsonMapper.writeValueAsString(peerEvaluationDto);
+
+        this.mockMvc.perform(put(this.baseUrl + "/evaluations/1").contentType(MediaType.APPLICATION_JSON).content(json).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.studentJohnToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT))
+                .andExpect(jsonPath("$.message").value("Actual score must be a whole number."));
+
+        assertThat(this.evaluationRepository.findById(1).orElseThrow().getTotalScore()).isEqualTo(totalScoreBefore);
+    }
+
     @Test
     void testStudentJohnAddEvaluationNotInActiveWeeks() throws Exception {
         List<RatingDto> ratingDtos = List.of(

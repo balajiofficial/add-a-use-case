@@ -50,6 +50,7 @@
               :min="0"
               :max="criterion.maxScore"
               :step="1"
+              step-strictly
               controls-position="right"
               style="width: 80px"
             />
