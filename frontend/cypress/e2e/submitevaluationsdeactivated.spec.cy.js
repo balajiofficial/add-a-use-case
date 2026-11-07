@@ -98,21 +98,24 @@ describe('Submit peer evaluations with a deactivated teammate', () => {
 
     rowsShouldBe(['John', 'Jerry'])
     cy.get('.el-table').should('not.contain', 'Eric')
-    cy.contains('button', 'Submit').should('be.visible')
+    cy.contains('button', 'Submit').scrollIntoView().should('be.visible')
   })
 
   it('saves the others, shows what was saved, and clears loading when one is refused (extension 9a)', () => {
     stubSaves(ERIC.id, 800)
     open()
     rowsShouldBe(['John', 'Eric', 'Jerry'])
-    teammates = [JOHN, teammate(5, 'Eric', false), JERRY] // Deactivated while the form is open
+    // Deactivated while the form is open. Queued, because plain code here would run before the page has even opened.
+    cy.then(() => {
+      teammates = [JOHN, teammate(5, 'Eric', false), JERRY]
+    })
 
     cy.contains('button', 'Submit').click()
 
     cy.get('.el-message--error').should('contain', 'whose account is deactivated')
     rowsShouldBe(['John', 'Jerry'])
     cy.get('.el-table').should('not.contain', 'Eric')
-    cy.contains('button', 'Update').should('be.visible').and('not.have.class', 'is-loading')
+    cy.contains('button', 'Update').scrollIntoView().should('be.visible').and('not.have.class', 'is-loading')
     cy.wait('@receipt') // The two that were saved earn the confirmation email
   })
 
