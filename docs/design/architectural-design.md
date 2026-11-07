@@ -302,7 +302,8 @@ sequenceDiagram
     API-->>SPA: Result { token: JWT (RSA-2048, 2h) }
     SPA->>SPA: store token (Pinia), set Bearer header
     SPA->>API: GET /api/v1/... (Bearer JWT)
-    API->>API: verify JWT, then AuthorizationManager (ownership/membership)
+    API->>DB: verify JWT, including that its account is still active
+    API->>API: AuthorizationManager (ownership/membership)
     API-->>SPA: Result { data }
 ```
 
@@ -429,7 +430,7 @@ Single-tenant (`CO-single-tenant`): one deployment serves one institution. The t
 #### **Authentication**
 
 - **Login:** HTTP Basic (email + password) → server issues a JWT (`AuthController` / `JwtProvider`). Passwords hashed with **BCrypt (strength 12)**.
-- **Tokens:** self-issued JWTs, **RSA-2048** signature, **2-hour** expiry, claims `sub`, `userId`, space-delimited `authorities`. Stateless OAuth2 resource server (`SessionCreationPolicy.STATELESS`).
+- **Tokens:** self-issued JWTs, **RSA-2048** signature, **2-hour** expiry, claims `sub`, `userId`, space-delimited `authorities`. Stateless OAuth2 resource server (`SessionCreationPolicy.STATELESS`). Each bearer request also looks up whether the token's account is still active (FR-SEC-active-account; [design/stu.md](stu.md)), which adds one query but no session.
 - **Provisioning:** invitation-gated registration (`user/userinvitation` — `validateUserInvitation` rejects any sign-up without a matching course-admin-issued invitation; see Known gaps); password reset via a one-time token valid **5 minutes**.
 - **Known gaps:** no token **refresh** or **revocation/blocklist** — a token is valid for its full 2h (a leaked token can't be revoked; logout is client-side only). The RSA key regenerates per startup (KD-self-issued-jwt). **`POST /students` and `POST /instructors` are `permitAll()` at the security-filter level, but registration is gated in the service layer**: both paths call `validateUserInvitation`, which rejects any registration lacking a course-admin-issued, single-use invitation whose email, token, role, course, and section all match (invitations are created via UC-STU-invite-students / UC-INS-invite-instructors). So account creation is **not** open self-registration — a stranger cannot self-provision, and an instructor account requires an *instructor* invitation. The residual concern is defense-in-depth: the only gate is service-layer (there is no filter-chain authorization rule), and the endpoint is unauthenticated and unthrottled (rate limiting is [TD-auth-rate-limit](#risks-and-technical-debt)).
 
@@ -582,7 +583,7 @@ The functional structure (the [component views](#building-block-view) above) is 
 - **Driving ASR(s):** self-hosted authentication (`CO-single-auth`, `SEC-authentication`) and student-record confidentiality (`SEC-authorization`, `SEC-ferpa`).
 - **Context:** Wanted stateless auth (no server-side session store); no external identity provider in scope.
 - **Decision:** Self-issue and verify JWTs rather than use sessions or an external IdP. The current implementation generates the RSA keypair at application startup.
-- **Consequences:** No session store; simple. *Rejected* external IdP / institutional SSO — beyond integration cost, institutional SSO onboarding is impractical at this scale (the institution's IT will not provision a relying-party integration for a course tool), so the platform authenticates users itself; the SRS's auth requirements (FR-SEC-authentication, CO-single-auth) accordingly delegate to *this* mechanism, not to an external IdP. *Rejected* sessions (server state). **Known limitation (incidental, not by design):** because the keypair is generated per startup and not persisted, every restart/redeploy invalidates all live tokens (users re-login) and a second instance can't verify the first's tokens — effectively capping the app at one instance. Externalizing/persisting the keys would lift this. (Drives the Scalability "accepted" trade-off and QS-release-deploy; revisit when multi-instance is needed.)
+- **Consequences:** No session store; simple. A signed token alone cannot show that its account was deactivated after issue, so FR-SEC-active-account adds an account-active lookup to each bearer request; the token stays self-contained for identity and the server still holds no session. *Rejected* external IdP / institutional SSO — beyond integration cost, institutional SSO onboarding is impractical at this scale (the institution's IT will not provision a relying-party integration for a course tool), so the platform authenticates users itself; the SRS's auth requirements (FR-SEC-authentication, CO-single-auth) accordingly delegate to *this* mechanism, not to an external IdP. *Rejected* sessions (server state). **Known limitation (incidental, not by design):** because the keypair is generated per startup and not persisted, every restart/redeploy invalidates all live tokens (users re-login) and a second instance can't verify the first's tokens — effectively capping the app at one instance. Externalizing/persisting the keys would lift this. (Drives the Scalability "accepted" trade-off and QS-release-deploy; revisit when multi-instance is needed.)
 
 **KD-no-codegen — No Lombok / no MapStruct (pedagogical).** *Accepted.*
 - **Driving ASR(s):** maintainability and learnability, for student contributors (`MNT-service-layer`; learnability is a pedagogical driver — QG-maintainability — not a formal SRS attribute).
